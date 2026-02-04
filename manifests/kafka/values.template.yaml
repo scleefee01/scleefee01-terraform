@@ -1,0 +1,49 @@
+deleteTopicEnable: true
+
+logRetentionBytes: 1073741824
+logRetentionHours: 168
+
+resources:
+  limits:
+    cpu: "2"
+    memory: "4Gi"
+  requests:
+    cpu: "500m"
+    memory: "1Gi"
+
+persistence:
+  enabled: false
+
+controller:
+  persistence:
+    enabled: false
+
+podLabels:
+  benchmark/system: kube-bench
+  benchmark/mutual-exclusive-key: "bench"
+  benchmark/pod-affinity: kafka
+
+
+auth:
+  enabled: false
+
+listeners:
+  client:
+    protocol: PLAINTEXT
+  controller:
+    protocol: PLAINTEXT
+  interbroker:
+    protocol: PLAINTEXT
+
+metrics:
+  kafka:
+    enabled: false
+  jmx:
+    enabled: false
+  serviceMonitor:
+    enabled: false
+
+image:
+  registry: docker.io
+  repository: bitnamilegacy/kafka
+  tag: 4.0.0-debian-12-r10
