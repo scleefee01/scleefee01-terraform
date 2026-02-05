@@ -1,0 +1,244 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${BENCHMARK_FLINK_NAMESPACE}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flink
+  namespace: ${BENCHMARK_FLINK_NAMESPACE}
+  annotations:
+    eks.amazonaws.com/role-arn: ${IAM_ROLE_ARN}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flink-config
+  namespace: ${BENCHMARK_FLINK_NAMESPACE}
+  labels:
+    app: flink
+data:
+  flink-conf.yaml: |+
+    # --- Core RPC / Ports ---
+    jobmanager.rpc.address: flink-jobmanager
+    jobmanager.rpc.port: 6123
+    blob.server.port: 6124
+    taskmanager.rpc.port: 6122
+    queryable-state.proxy.ports: 6125
+
+    # --- Parallelism / Slots ---
+    parallelism.default: ${BENCHMARK_FLINK_PARALLELISM}
+    taskmanager.numberOfTaskSlots: ${BENCHMARK_FLINK_TASKMANAGER_SLOTS}
+    parallelism.max: 128
+
+    # --- JVM / Restart strategy ---
+    env.java.opts: ${BENCHMARK_FLINK_ENV_JAVA_OPTS}
+    restart-strategy: ${BENCHMARK_FLINK_RESTART_STRATEGY}
+    restart-strategy.fixed-delay.attempts: ${BENCHMARK_FLINK_RESTART_STRATEGY_FIXED_DELAY_ATTEMPTS}
+    restart-strategy.fixed-delay.delay: ${BENCHMARK_FLINK_RESTART_STRATEGY_FIXED_DELAY_DELAY}
+    jobmanager.execution.attempts-history-size: ${BENCHMARK_FLINK_JOBMANAGER_EXECUTION_ATTEMPTS_HISTORY_SIZE}
+
+    # --- Memory / Network tuning ---
+    jobmanager.memory.process.size: ${BENCHMARK_FLINK_JOBMANAGER_MEMORY}
+    taskmanager.memory.process.size: ${BENCHMARK_FLINK_TASKMANAGER_MEMORY}
+    taskmanager.memory.managed.fraction: ${BENCHMARK_FLINK_TASKMANAGER_MEMORY_MANAGED_FRACTION}
+    taskmanager.network.request-backoff.max: ${BENCHMARK_FLINK_TASKMANAGER_NETWORK_REQUEST_BACKOFF_MAX}
+    taskmanager.network.memory.floating-buffers-per-gate: ${BENCHMARK_FLINK_TASKMANAGER_NETWORK_MEMORY_FLOATING_BUFFERS_PER_GATE}
+    taskmanager.network.memory.buffers-per-external-blocking-channel: ${BENCHMARK_FLINK_TASKMANAGER_NETWORK_MEMORY_BUFFERS_PER_EXTERNAL_BLOCKING_CHANNEL}
+
+    # --- Checkpointing / State backend ---
+    execution.checkpointing.mode: EXACTLY_ONCE
+    execution.checkpointing.interval: ${BENCHMARK_FLINK_CHECKPOINT_INTERVAL}
+    execution.checkpointing.max-concurrent-checkpoints: ${BENCHMARK_FLINK_EXECUTION_CHECKPOINTING_MAX_CONCURRENT_CHECKPOINTS}
+    execution.checkpointing.checkpoints-after-tasks-finish.enabled: ${BENCHMARK_FLINK_EXECUTION_CHECKPOINTING_CHECKPOINTS_AFTER_TASKS_FINISH_ENABLED}
+
+    state.backend: rocksdb
+    state.backend.incremental: ${BENCHMARK_FLINK_STATE_BACKEND_INCREMENTAL}
+    state.backend.local-recovery: true
+    state.checkpoints.dir: s3://${BENCHMARK_FLINK_S3_BUCKET}/${BENCHMARK_FLINK_S3_BUCKET_FOLDER}
+
+    # RocksDB tuning
+    state.backend.rocksdb.block.blocksize: ${BENCHMARK_FLINK_STATE_BACKEND_ROCKSDB_BLOCK_BLOCKSIZE}
+    state.backend.rocksdb.thread.num: ${BENCHMARK_FLINK_STATE_BACKEND_ROCKSDB_THREAD_NUM}
+    state.backend.rocksdb.writebuffer.count: ${BENCHMARK_FLINK_STATE_BACKEND_ROCKSDB_WRITEBUFFER_COUNT}
+    state.backend.rocksdb.writebuffer.number-to-merge: ${BENCHMARK_FLINK_STATE_BACKEND_ROCKSDB_WRITEBUFFER_NUMBER_TO_MERGE}
+    state.backend.rocksdb.compaction.level.use-dynamic-size: ${BENCHMARK_FLINK_STATE_BACKEND_ROCKSDB_COMPACTION_LEVEL_USE_DYNAMIC_SIZE}
+    state.backend.rocksdb.compaction.level.target-file-size-base: ${BENCHMARK_FLINK_STATE_BACKEND_ROCKSDB_COMPACTION_LEVEL_TARGET_FILE_SIZE_BASE}
+    state.backend.rocksdb.use-bloom-filter: ${BENCHMARK_FLINK_STATE_BACKEND_ROCKSDB_USE_BLOOM_FILTER}
+
+    # --- S3 endpoint (credentials are from IRSA) ---
+    fs.s3a.endpoint: s3.ap-northeast-1.amazonaws.com
+
+
+    # --- Local tmp dirs ---
+    io.tmp.dirs: /opt/flink/tmp
+
+    # --- Metrics (Prometheus reporter) ---
+    metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+    metrics.reporter.prom.port: 9249
+
+  log4j-console.properties: |+
+    rootLogger.level = INFO
+    rootLogger.appenderRef.console.ref = ConsoleAppender
+    appender.console.name = ConsoleAppender
+    appender.console.type = CONSOLE
+    appender.console.layout.type = PatternLayout
+    appender.console.layout.pattern = %d{yyyy-MM-dd HH:mm:ss,SSS} %-5p %-60c - %m%n
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flink-jobmanager
+  namespace: ${BENCHMARK_FLINK_NAMESPACE}
+  labels:
+    app: flink-service
+    component: jobmanager
+spec:
+  type: ClusterIP
+  ports:
+    - name: rpc
+      port: 6123
+    - name: blob-server
+      port: 6124
+    - name: webui
+      port: 8081
+    - name: prom
+      port: 9249
+  selector:
+    app: flink
+    component: jobmanager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-jobmanager
+  namespace: ${BENCHMARK_FLINK_NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flink
+      component: jobmanager
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: jobmanager
+    spec:
+      serviceAccountName: flink
+      containers:
+        - name: jobmanager
+          image: ghcr.io/risingwavelabs/flink-docker:${BENCHMARK_FLINK_IMAGE_TAG}
+          imagePullPolicy: Always
+          args: ["jobmanager"]
+          ports:
+            - containerPort: 6123
+              name: rpc
+            - containerPort: 6124
+              name: blob-server
+            - containerPort: 8081
+              name: webui
+            - containerPort: 9249
+              name: prom
+          volumeMounts:
+            - name: flink-config-volume
+              mountPath: /opt/flink/conf
+          securityContext:
+            runAsUser: 9999
+          resources:
+            requests:
+              cpu: ${BENCHMARK_FLINK_RESOURCES_CPU_REQUEST}
+              memory: ${BENCHMARK_FLINK_RESOURCES_MEM_REQUEST}
+            limits:
+              cpu: ${BENCHMARK_FLINK_RESOURCES_CPU_LIMIT}
+              memory: ${BENCHMARK_FLINK_RESOURCES_MEM_LIMIT}
+      volumes:
+        - name: flink-config-volume
+          configMap:
+            name: flink-config
+            items:
+              - key: flink-conf.yaml
+                path: flink-conf.yaml
+              - key: log4j-console.properties
+                path: log4j-console.properties
+        - name: tmp-dir
+          emptyDir: {}  
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flink-taskmanager
+  namespace: ${BENCHMARK_FLINK_NAMESPACE}
+  labels:
+    app: flink-service
+    component: taskmanager
+spec:
+  type: ClusterIP
+  ports:
+    - name: rpc
+      port: 6122
+    - name: query-state
+      port: 6125
+    - name: prom
+      port: 9249
+  selector:
+    app: flink
+    component: taskmanager
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: flink-taskmanager
+  namespace: ${BENCHMARK_FLINK_NAMESPACE}
+spec:
+  serviceName: flink-taskmanager
+  replicas: ${BENCHMARK_FLINK_TASKMANAGER_REPLICAS}
+  selector:
+    matchLabels:
+      app: flink
+      component: taskmanager
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: taskmanager
+    spec:
+      serviceAccountName: flink
+      containers:
+        - name: taskmanager
+          image: ghcr.io/risingwavelabs/flink-docker:${BENCHMARK_FLINK_IMAGE_TAG}
+          imagePullPolicy: Always
+          args: ["taskmanager"]
+          ports:
+            - containerPort: 6122
+              name: rpc
+            - containerPort: 6125
+              name: query-state
+            - containerPort: 9249
+              name: prom
+          volumeMounts:
+            - name: flink-config-volume
+              mountPath: /opt/flink/conf
+            - name: tmp-dir
+              mountPath: /opt/flink/tmp
+          securityContext:
+            runAsUser: 9999
+          resources:
+            requests:
+              cpu: ${BENCHMARK_FLINK_RESOURCES_CPU_REQUEST}
+              memory: ${BENCHMARK_FLINK_RESOURCES_MEM_REQUEST}
+            limits:
+              cpu: ${BENCHMARK_FLINK_RESOURCES_CPU_LIMIT}
+              memory: ${BENCHMARK_FLINK_RESOURCES_MEM_LIMIT}
+      volumes:
+        - name: flink-config-volume
+          configMap:
+            name: flink-config
+            items:
+              - key: flink-conf.yaml
+                path: flink-conf.yaml
+              - key: log4j-console.properties
+                path: log4j-console.properties
+        - name: tmp-dir
+          emptyDir: {}
