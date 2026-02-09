@@ -45,7 +45,7 @@ data:
     ) WITH (
         'connector' = 'kafka',
         'topic' = 'nexmark-events',
-        'properties.bootstrap.servers' = 'benchmark-kafka.${BENCHMARK_FLINK_NAMESPACE}:9092',
+        'properties.bootstrap.servers' = '${BENCHMARK_KAFKA_NAME}.${BENCHMARK_KAFKA_NAMESPACE}:9092',
         'properties.group.id' = 'nexmark-events',
         'scan.startup.mode' = 'earliest-offset',
         'sink.partitioner' = 'fixed',
@@ -133,7 +133,7 @@ data:
     ) WITH (
         'connector' = 'kafka',
         'topic' = 'nexmark-events',
-        'properties.bootstrap.servers' = 'benchmark-kafka.${BENCHMARK_FLINK_NAMESPACE}:9092',
+        'properties.bootstrap.servers' = '${BENCHMARK_KAFKA_NAME}.${BENCHMARK_KAFKA_NAMESPACE}:9092',
         'properties.group.id' = 'nexmark-events',
         'scan.startup.mode' = 'earliest-offset',
         'sink.partitioner' = 'fixed',

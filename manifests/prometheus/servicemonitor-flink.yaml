@@ -3,6 +3,8 @@ kind: ServiceMonitor
 metadata:
   name: flink
   namespace: monitoring
+  labels:
+    release: kps
 spec:
   namespaceSelector:
     matchNames:

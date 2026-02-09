@@ -22,14 +22,14 @@ spec:
           args:
             - -c
             - |-
-              /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server ${BENCHMARK_KAFKA_NAME}.${BENCHMARK_NAMESPACE}:9092 --topic nexmark-events --partitions ${BENCHMARK_NEXMARK_KAFKA_PARTITION} --replication-factor 1;
+              /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server ${BENCHMARK_KAFKA_NAME}.${BENCHMARK_KAFKA_NAMESPACE}:9092 --topic nexmark-events --partitions ${BENCHMARK_NEXMARK_KAFKA_PARTITION} --replication-factor 1;
       containers:
         - name: nexmark-bench
           image: ghcr.io/risingwavelabs/nexmark-bench:${BENCHMARK_NEXMARK_KAFKA_IMAGE_TAG}
           imagePullPolicy: ${BENCHMARK_NEXMARK_KAFKA_IMAGE_PULL_POLICY}
           env:
             - name: KAFKA_HOST
-              value: "${BENCHMARK_KAFKA_NAME}.${BENCHMARK_NAMESPACE}:9092"
+              value: "${BENCHMARK_KAFKA_NAME}.${BENCHMARK_KAFKA_NAMESPACE}:9092"
             - name: AUCTION_TOPIC
               value: "nexmark-auction"
             - name: BID_TOPIC

@@ -2,6 +2,34 @@ locals {
   azs = ["${var.region}a", "${var.region}c", "${var.region}d"]
 }
 
+resource "aws_iam_policy" "node_s3_access" {
+  name        = "${var.cluster_name}-node-s3-access"
+  description = "Allow EKS nodes to access S3 for Flink checkpoints"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket",
+          "s3:GetBucketLocation"
+        ]
+        Resource = "arn:aws:s3:::dev-sclee01-apne1"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "arn:aws:s3:::dev-sclee01-apne1/flink/*"
+      }
+    ]
+  })
+}
+
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "~> 5.0"
@@ -63,6 +91,10 @@ module "eks" {
       max_size     = 3
 
       disk_size = 100
+
+      iam_role_additional_policies = {
+        s3_access = aws_iam_policy.node_s3_access.arn
+      }
     }
   }
 
