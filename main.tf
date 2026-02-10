@@ -103,7 +103,7 @@ module "eks" {
   }
 
   cluster_endpoint_public_access  = true
-  cluster_endpoint_private_access = true  # 보통은 둘 다 켜둠
+  cluster_endpoint_private_access = true 
   cluster_endpoint_public_access_cidrs = [
       "54.95.132.75/32"
   ]

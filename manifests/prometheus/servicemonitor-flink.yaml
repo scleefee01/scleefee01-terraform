@@ -14,5 +14,5 @@ spec:
       app: flink-service
   endpoints:
     - port: prom
-      interval: 15s
+      interval: 5s
       path: /metrics

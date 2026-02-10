@@ -11,12 +11,30 @@ resources:
     cpu: "500m"
     memory: "1Gi"
 
-persistence:
-  enabled: false
-
+# Explicit per-role resources (KRaft). These override the chart defaults
+# and avoid small limits that can lead to OOM/restarts.
 controller:
+  resources:
+    limits:
+      cpu: "2"
+      memory: "2Gi"
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
   persistence:
     enabled: false
+
+broker:
+  resources:
+    limits:
+      cpu: "2"
+      memory: "2Gi"
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+
+persistence:
+  enabled: false
 
 podLabels:
   benchmark/system: kube-bench
