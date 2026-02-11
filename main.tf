@@ -65,6 +65,12 @@ module "eks" {
 
   enable_irsa = true
 
+  cluster_addons = {
+    aws-ebs-csi-driver = {
+      most_recent = true
+    }
+  }
+
   access_entries = {
     ec2_admin = {
       principal_arn = "arn:aws:iam::967157097094:role/dataeng-sclee01-iam-roles"
@@ -93,7 +99,8 @@ module "eks" {
       disk_size = 100
 
       iam_role_additional_policies = {
-        s3_access = aws_iam_policy.node_s3_access.arn
+        s3_access     = aws_iam_policy.node_s3_access.arn
+        ebs_csi       = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
       }
     }
   }

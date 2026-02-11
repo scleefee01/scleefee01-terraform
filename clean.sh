@@ -10,6 +10,14 @@ set +a
 
 FLINK_NS="${BENCHMARK_FLINK_NAMESPACE}"
 
+# Parse flags
+KEEP_TOPIC=false
+for arg in "$@"; do
+  case "${arg}" in
+    --keep-topic) KEEP_TOPIC=true ;;
+  esac
+done
+
 echo "=== Cancelling running Flink jobs (ns: ${FLINK_NS}) ==="
 
 # Get running job IDs from Flink REST API
@@ -39,12 +47,16 @@ fi
 echo "=== Deleting start job ==="
 kubectl delete job "${BENCHMARK_JOB_NAME}" -n "${FLINK_NS}" --ignore-not-found
 
-# Delete Kafka topic to clear accumulated data
-echo "=== Deleting Kafka topic: nexmark-events ==="
-kubectl exec -n "${BENCHMARK_KAFKA_NAMESPACE}" "${BENCHMARK_KAFKA_NAME}-controller-0" -- \
-  /opt/bitnami/kafka/bin/kafka-topics.sh --delete \
-  --bootstrap-server localhost:9092 \
-  --topic nexmark-events 2>/dev/null || true
+# Delete Kafka topic to clear accumulated data (unless --keep-topic)
+if [[ "${KEEP_TOPIC}" == "true" ]]; then
+  echo "=== Skipping Kafka topic deletion (--keep-topic) ==="
+else
+  echo "=== Deleting Kafka topic: nexmark-events ==="
+  kubectl exec -n "${BENCHMARK_KAFKA_NAMESPACE}" "${BENCHMARK_KAFKA_NAME}-controller-0" -- \
+    /opt/bitnami/kafka/bin/kafka-topics.sh --delete \
+    --bootstrap-server localhost:9092 \
+    --topic nexmark-events 2>/dev/null || true
+fi
 
 # Delete the prepare K8s Job so prepare.sh can run again cleanly
 echo "=== Deleting prepare job ==="

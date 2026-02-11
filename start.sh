@@ -9,6 +9,11 @@ source <("${SCRIPT_DIR}/tomlenv/bin/tomlenv" "${SCRIPT_DIR}/toml/env.toml")
 export TRICK_SYMBOLS_EMPTY=""
 set +a
 
+# Allow query override from argument
+if [[ $# -ge 1 ]]; then
+  BENCHMARK_NEXMARK_QUERIES="$1"
+fi
+
 echo "=== Starting Nexmark query: ${BENCHMARK_NEXMARK_QUERIES} (ns: ${BENCHMARK_FLINK_NAMESPACE}) ==="
 
 # Apply ConfigMaps (idempotent)

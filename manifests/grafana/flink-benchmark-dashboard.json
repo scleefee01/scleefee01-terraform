@@ -1,0 +1,329 @@
+{
+  "uid": "flink-nexmark-benchmark",
+  "title": "Flink NEXMark Benchmark",
+  "tags": ["flink", "nexmark", "benchmark"],
+  "timezone": "browser",
+  "editable": true,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "namespace",
+        "type": "constant",
+        "current": { "value": "flink", "text": "flink" },
+        "hide": 0,
+        "query": "flink"
+      },
+      {
+        "name": "job_name",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(flink_jobmanager_job_uptime{}, job_name)",
+        "refresh": 2,
+        "sort": 1
+      },
+      {
+        "name": "kafka_namespace",
+        "type": "constant",
+        "current": { "value": "kafka", "text": "kafka" },
+        "hide": 0,
+        "query": "kafka"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Overview",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "Total Records In",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(flink_taskmanager_job_task_operator_numRecordsIn{namespace=\"$namespace\", job_name=~\"$job_name\", operator_name=~\"Source.*\"})",
+          "legendFormat": "Total Records In"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "steps": [{ "color": "green", "value": null }] }
+        }
+      },
+      "options": { "colorMode": "value", "graphMode": "area", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "type": "stat",
+      "title": "Throughput (rec/s)",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(flink_taskmanager_job_task_operator_numRecordsIn{namespace=\"$namespace\", job_name=~\"$job_name\", operator_name=~\"Source.*\"}[1m]))",
+          "legendFormat": "Records/sec"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "steps": [{ "color": "green", "value": null }] }
+        }
+      },
+      "options": { "colorMode": "value", "graphMode": "area", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "type": "stat",
+      "title": "Consumer Lag",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(kafka_consumergroup_lag{namespace=\"$kafka_namespace\"})",
+          "legendFormat": "Lag"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10000 },
+              { "color": "red", "value": 100000 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "value", "graphMode": "area", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "type": "stat",
+      "title": "Completed Checkpoints",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(flink_jobmanager_job_numberOfCompletedCheckpoints{namespace=\"$namespace\", job_name=~\"$job_name\"})",
+          "legendFormat": "Completed"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "steps": [{ "color": "green", "value": null }] }
+        }
+      },
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "type": "row",
+      "title": "Throughput",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Records In Per Second (by operator)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(flink_taskmanager_job_task_operator_numRecordsIn{namespace=\"$namespace\", job_name=~\"$job_name\", operator_name=~\"Source.*\"}[1m])",
+          "legendFormat": "{{operator_name}} [{{subtask_index}}]"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10 } } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Records Out Per Second (by operator)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(flink_taskmanager_job_task_operator_numRecordsOut{namespace=\"$namespace\", job_name=~\"$job_name\", operator_name=~\"Sink.*\"}[1m])",
+          "legendFormat": "{{operator_name}} [{{subtask_index}}]"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10 } } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Aggregate Throughput (Records/sec)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(flink_taskmanager_job_task_operator_numRecordsIn{namespace=\"$namespace\", job_name=~\"$job_name\", operator_name=~\"Source.*\"}[1m]))",
+          "legendFormat": "Records In / sec"
+        },
+        {
+          "expr": "sum(rate(flink_taskmanager_job_task_operator_numRecordsOut{namespace=\"$namespace\", job_name=~\"$job_name\", operator_name=~\"Sink.*\"}[1m]))",
+          "legendFormat": "Records Out / sec"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 20 } } }
+    },
+    {
+      "type": "row",
+      "title": "Latency",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency p50 / p95 / p99",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 23 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "max(flink_taskmanager_job_latency_source_id_operator_id_operator_subtask_index_latency{namespace=\"$namespace\", job_name=~\"$job_name\", quantile=\"0.5\"})",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "max(flink_taskmanager_job_latency_source_id_operator_id_operator_subtask_index_latency{namespace=\"$namespace\", job_name=~\"$job_name\", quantile=\"0.95\"})",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "max(flink_taskmanager_job_latency_source_id_operator_id_operator_subtask_index_latency{namespace=\"$namespace\", job_name=~\"$job_name\", quantile=\"0.99\"})",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } } }
+    },
+    {
+      "type": "row",
+      "title": "Checkpointing",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Checkpoint Duration",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "flink_jobmanager_job_lastCheckpointDuration{namespace=\"$namespace\", job_name=~\"$job_name\"}",
+          "legendFormat": "Last Duration"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10 } } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Checkpoint Size",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "flink_jobmanager_job_lastCheckpointSize{namespace=\"$namespace\", job_name=~\"$job_name\"}",
+          "legendFormat": "Last Size"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10 } } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Checkpoints Completed / Failed",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 40 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(flink_jobmanager_job_numberOfCompletedCheckpoints{namespace=\"$namespace\", job_name=~\"$job_name\"})",
+          "legendFormat": "Completed"
+        },
+        {
+          "expr": "sum(flink_jobmanager_job_numberOfFailedCheckpoints{namespace=\"$namespace\", job_name=~\"$job_name\"})",
+          "legendFormat": "Failed"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } } }
+    },
+    {
+      "type": "row",
+      "title": "Kafka Consumer",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 48 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Consumer Lag (by partition)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 49 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "kafka_consumergroup_lag{namespace=\"$kafka_namespace\", topic=\"nexmark-events\"}",
+          "legendFormat": "partition {{partition}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10 } } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Records Consumed Rate",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 49 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(kafka_topic_partition_current_offset{namespace=\"$kafka_namespace\", topic=\"nexmark-events\"}[1m]))",
+          "legendFormat": "Consumed Rate"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 20 } } }
+    },
+    {
+      "type": "row",
+      "title": "Resources",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 57 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU Usage (by pod)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 58 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"flink-.*\", container!=\"\", container!=\"POD\"}[1m])) by (pod)",
+          "legendFormat": "{{pod}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10 } } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory Usage (by pod)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 58 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"flink-.*\", container!=\"\", container!=\"POD\"}) by (pod)",
+          "legendFormat": "{{pod}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10 } } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Total CPU / Memory",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 66 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"flink-.*\", container!=\"\", container!=\"POD\"}[1m]))",
+          "legendFormat": "Total CPU (cores)"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 20 } } },
+      "options": {}
+    }
+  ],
+  "schemaVersion": 39
+}

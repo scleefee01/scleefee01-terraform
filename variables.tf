@@ -7,4 +7,4 @@ variable "cluster_name" {
 variable "region" {
   type    = string
   default = "ap-northeast-1"
-}
+} 

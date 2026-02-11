@@ -1,40 +1,55 @@
 deleteTopicEnable: true
 
-logRetentionBytes: 1073741824
+logRetentionBytes: -1
 logRetentionHours: 168
 
 resources:
   limits:
-    cpu: "2"
-    memory: "4Gi"
+    cpu: "3"
+    memory: "6Gi"
   requests:
-    cpu: "500m"
-    memory: "1Gi"
+    cpu: "1"
+    memory: "4Gi"
 
 # Explicit per-role resources (KRaft). These override the chart defaults
 # and avoid small limits that can lead to OOM/restarts.
 controller:
   resources:
     limits:
-      cpu: "2"
-      memory: "2Gi"
+      cpu: "3"
+      memory: "6Gi"
     requests:
-      cpu: "500m"
-      memory: "1Gi"
+      cpu: "1"
+      memory: "4Gi"
   persistence:
-    enabled: false
+    enabled: true
+    size: 80Gi
+    storageClass: gp3
 
 broker:
   resources:
     limits:
-      cpu: "2"
-      memory: "2Gi"
+      cpu: "3"
+      memory: "6Gi"
     requests:
-      cpu: "500m"
-      memory: "1Gi"
+      cpu: "1"
+      memory: "4Gi"
 
 persistence:
-  enabled: false
+  enabled: true
+  size: 80Gi
+  storageClass: gp3
+
+extraEnvVars:
+  - name: KAFKA_HEAP_OPTS
+    value: "-Xmx1536m -Xms1024m"
+
+overrideConfiguration:
+  num.network.threads: "8"
+  num.io.threads: "16"
+  socket.send.buffer.bytes: "1048576"
+  socket.receive.buffer.bytes: "1048576"
+  compression.type: "lz4"
 
 podLabels:
   benchmark/system: kube-bench
