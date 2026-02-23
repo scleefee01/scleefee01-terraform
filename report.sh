@@ -12,8 +12,17 @@ set -euo pipefail
 ###############################################################################
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-QUERY="${1:?Usage: $0 <query> [--skip-wait]}"
-SKIP_WAIT="${2:-}"
+QUERY="${1:?Usage: $0 <query> [--skip-wait] [--timeout <minutes>]}"
+SKIP_WAIT=""
+TIMEOUT_MIN=60
+shift
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --skip-wait) SKIP_WAIT="--skip-wait" ;;
+    --timeout) TIMEOUT_MIN="$2"; shift ;;
+  esac
+  shift
+done
 
 # Load env vars from TOML
 set -a
@@ -122,11 +131,16 @@ echo "  Job: ${JOB_NAME} (${JOB_ID}) state=${JOB_STATE} parallelism=${PARALLELIS
 # 3. Get total Kafka messages
 ###############################################################################
 echo "=== Fetching Kafka total messages ==="
-TOTAL_MESSAGES=$(kubectl exec -n "${KAFKA_NS}" "${KAFKA_NAME}-controller-0" -- \
+LATEST_OFFSETS=$(kubectl exec -n "${KAFKA_NS}" "${KAFKA_NAME}-controller-0" -- \
   /opt/bitnami/kafka/bin/kafka-get-offsets.sh \
-  --bootstrap-server localhost:9092 --topic nexmark-events 2>/dev/null \
+  --bootstrap-server localhost:9092 --topic nexmark-events --time latest 2>/dev/null \
   | awk -F: '{s+=$3} END {print s+0}')
-echo "  Total messages: ${TOTAL_MESSAGES}"
+EARLIEST_OFFSETS=$(kubectl exec -n "${KAFKA_NS}" "${KAFKA_NAME}-controller-0" -- \
+  /opt/bitnami/kafka/bin/kafka-get-offsets.sh \
+  --bootstrap-server localhost:9092 --topic nexmark-events --time earliest 2>/dev/null \
+  | awk -F: '{s+=$3} END {print s+0}')
+TOTAL_MESSAGES=$(( LATEST_OFFSETS - EARLIEST_OFFSETS ))
+echo "  Total messages: ${TOTAL_MESSAGES} (latest=${LATEST_OFFSETS} earliest=${EARLIEST_OFFSETS})"
 
 ###############################################################################
 # 4. Wait for consumer lag to reach 0 (poll every 10s, 3 consecutive zeros)
@@ -135,10 +149,10 @@ if [[ "${SKIP_WAIT}" != "--skip-wait" ]]; then
   echo "=== Waiting for consumer lag to reach 0 ==="
   ZERO_COUNT=0
   REQUIRED_ZEROS=3
-  MAX_POLLS=360  # 60 minutes max
+  MAX_POLLS=$(( TIMEOUT_MIN * 6 ))  # poll every 10s
 
   for i in $(seq 1 "${MAX_POLLS}"); do
-    LAG=$(prom_query 'sum(kafka_consumergroup_lag{topic="nexmark-events"})' 2>/dev/null || echo "NaN")
+    LAG=$(prom_query 'sum(kafka_consumergroup_lag{topic="nexmark-events", consumergroup="nexmark-events"})' 2>/dev/null || echo "NaN")
 
     # Treat non-numeric or missing as non-zero
     if [[ "${LAG}" == "0" || "${LAG}" == "0.0" ]]; then
@@ -169,24 +183,36 @@ JOB_END_MS=$(date +%s%3N)
 TOTAL_TIME_SEC=$(( (JOB_END_MS - JOB_START) / 1000 ))
 echo "=== Processing time: ${TOTAL_TIME_SEC}s ==="
 
+# Dynamic Prometheus window based on actual job duration (avoid including idle time)
+PROM_WINDOW="${TOTAL_TIME_SEC}s"
+echo "  Prometheus query window: ${PROM_WINDOW}"
+
 ###############################################################################
 # 6. Collect metrics from Prometheus
 ###############################################################################
 echo "=== Collecting metrics from Prometheus ==="
 
-# Throughput
-THROUGHPUT_AVG=$(prom_query "avg_over_time(sum(rate(flink_taskmanager_job_task_operator_numRecordsIn{namespace=\"${FLINK_NS}\", operator_name=~\"Source.*\"}[1m]))[30m:])")
-THROUGHPUT_MAX=$(prom_query "max_over_time(sum(rate(flink_taskmanager_job_task_operator_numRecordsIn{namespace=\"${FLINK_NS}\", operator_name=~\"Source.*\"}[1m]))[30m:])")
-THROUGHPUT_OUT_AVG=$(prom_query "avg_over_time(sum(rate(flink_taskmanager_job_task_operator_numRecordsIn{namespace=\"${FLINK_NS}\", operator_name=~\"Sink.*\"}[1m]))[30m:])")
+# Throughput (Prometheus-based: Source operator numRecordsIn rate)
+THROUGHPUT_AVG=$(prom_query "avg_over_time(sum(rate(flink_taskmanager_job_task_operator_numRecordsIn{namespace=\"${FLINK_NS}\", operator_name=~\"Source.*\"}[1m]))[${PROM_WINDOW}:])")
+THROUGHPUT_MAX=$(prom_query "max_over_time(sum(rate(flink_taskmanager_job_task_operator_numRecordsIn{namespace=\"${FLINK_NS}\", operator_name=~\"Source.*\"}[1m]))[${PROM_WINDOW}:])")
+THROUGHPUT_OUT_AVG=$(prom_query "avg_over_time(sum(rate(flink_taskmanager_job_task_operator_numRecordsIn{namespace=\"${FLINK_NS}\", operator_name=~\"Sink.*\"}[1m]))[${PROM_WINDOW}:])")
 
-echo "  Throughput: avg=${THROUGHPUT_AVG} max=${THROUGHPUT_MAX} rec/s"
+# Throughput (wall-clock: total_messages / total_time_seconds)
+if [[ ${TOTAL_TIME_SEC} -gt 0 ]]; then
+  THROUGHPUT_CALC=$(python3 -c "print(${TOTAL_MESSAGES} / ${TOTAL_TIME_SEC})")
+else
+  THROUGHPUT_CALC="0"
+fi
 
-# Latency (p50, p95, p99)
-LATENCY_P50=$(prom_query "max(flink_taskmanager_job_latency_source_id_operator_id_operator_subtask_index_latency{namespace=\"${FLINK_NS}\", quantile=\"0.5\"})")
-LATENCY_P95=$(prom_query "max(flink_taskmanager_job_latency_source_id_operator_id_operator_subtask_index_latency{namespace=\"${FLINK_NS}\", quantile=\"0.95\"})")
-LATENCY_P99=$(prom_query "max(flink_taskmanager_job_latency_source_id_operator_id_operator_subtask_index_latency{namespace=\"${FLINK_NS}\", quantile=\"0.99\"})")
+echo "  Throughput: avg=${THROUGHPUT_AVG} max=${THROUGHPUT_MAX} calc=${THROUGHPUT_CALC} rec/s"
 
-echo "  Latency: p50=${LATENCY_P50} p95=${LATENCY_P95} p99=${LATENCY_P99} ms"
+# Checkpoint duration latency (p50, p95, p99) — comparable to RisingWave barrier latency
+# lastCheckpointDuration is a gauge (ms) updated after each checkpoint
+LATENCY_P50=$(prom_query "quantile_over_time(0.5, flink_jobmanager_job_lastCheckpointDuration{namespace=\"${FLINK_NS}\"}[${PROM_WINDOW}])")
+LATENCY_P95=$(prom_query "quantile_over_time(0.95, flink_jobmanager_job_lastCheckpointDuration{namespace=\"${FLINK_NS}\"}[${PROM_WINDOW}])")
+LATENCY_P99=$(prom_query "quantile_over_time(0.99, flink_jobmanager_job_lastCheckpointDuration{namespace=\"${FLINK_NS}\"}[${PROM_WINDOW}])")
+
+echo "  Checkpoint latency: p50=${LATENCY_P50} p95=${LATENCY_P95} p99=${LATENCY_P99} ms"
 
 # Checkpoints
 CKPT_COMPLETED=$(prom_query "sum(flink_jobmanager_job_numberOfCompletedCheckpoints{namespace=\"${FLINK_NS}\"})")
@@ -197,10 +223,10 @@ CKPT_SIZE=$(prom_query "flink_jobmanager_job_lastCheckpointSize{namespace=\"${FL
 echo "  Checkpoints: completed=${CKPT_COMPLETED} failed=${CKPT_FAILED} last_duration=${CKPT_DURATION}ms last_size=${CKPT_SIZE}B"
 
 # Resources (CPU / Memory)
-RES_AVG_CPU=$(prom_query "avg_over_time(sum(rate(container_cpu_usage_seconds_total{namespace=\"${FLINK_NS}\", pod=~\"flink-.*\", container!=\"\", container!=\"POD\"}[1m]))[30m:])")
-RES_MAX_CPU=$(prom_query "max_over_time(sum(rate(container_cpu_usage_seconds_total{namespace=\"${FLINK_NS}\", pod=~\"flink-.*\", container!=\"\", container!=\"POD\"}[1m]))[30m:])")
-RES_AVG_MEM=$(prom_query "avg_over_time(sum(container_memory_working_set_bytes{namespace=\"${FLINK_NS}\", pod=~\"flink-.*\", container!=\"\", container!=\"POD\"})[30m:])")
-RES_MAX_MEM=$(prom_query "max_over_time(sum(container_memory_working_set_bytes{namespace=\"${FLINK_NS}\", pod=~\"flink-.*\", container!=\"\", container!=\"POD\"})[30m:])")
+RES_AVG_CPU=$(prom_query "avg_over_time(sum(rate(container_cpu_usage_seconds_total{namespace=\"${FLINK_NS}\", pod=~\"flink-taskmanager.*\", container=~\".+\", container!=\"POD\"}[1m]))[${PROM_WINDOW}:])")
+RES_MAX_CPU=$(prom_query "max_over_time(sum(rate(container_cpu_usage_seconds_total{namespace=\"${FLINK_NS}\", pod=~\"flink-taskmanager.*\", container=~\".+\", container!=\"POD\"}[1m]))[${PROM_WINDOW}:])")
+RES_AVG_MEM=$(prom_query "avg_over_time(sum(container_memory_working_set_bytes{namespace=\"${FLINK_NS}\", pod=~\"flink-taskmanager.*\", container=~\".+\", container!=\"POD\"})[${PROM_WINDOW}:])")
+RES_MAX_MEM=$(prom_query "max_over_time(sum(container_memory_working_set_bytes{namespace=\"${FLINK_NS}\", pod=~\"flink-taskmanager.*\", container=~\".+\", container!=\"POD\"})[${PROM_WINDOW}:])")
 
 echo "  Resources: avg_cpu=${RES_AVG_CPU} max_cpu=${RES_MAX_CPU} avg_mem=${RES_AVG_MEM} max_mem=${RES_MAX_MEM}"
 
@@ -232,6 +258,7 @@ jq -n \
   --arg throughput_avg "${THROUGHPUT_AVG}" \
   --arg throughput_max "${THROUGHPUT_MAX}" \
   --arg throughput_out_avg "${THROUGHPUT_OUT_AVG}" \
+  --arg throughput_calc "${THROUGHPUT_CALC}" \
   --arg latency_p50 "${LATENCY_P50}" \
   --arg latency_p95 "${LATENCY_P95}" \
   --arg latency_p99 "${LATENCY_P99}" \
@@ -266,9 +293,12 @@ jq -n \
     throughput: {
       avg_records_per_sec: $throughput_avg,
       max_records_per_sec: $throughput_max,
-      avg_records_out_per_sec: $throughput_out_avg
+      avg_records_out_per_sec: $throughput_out_avg,
+      calc_records_per_sec: $throughput_calc
     },
     latency: {
+      type: "checkpoint_latency",
+      description: "checkpoint duration (ms) — comparable to RisingWave barrier latency",
       p50_ms: $latency_p50,
       p95_ms: $latency_p95,
       p99_ms: $latency_p99
@@ -320,6 +350,7 @@ s = r['storage']
 
 throughput_krs = float(t['avg_records_per_sec']) / 1000
 throughput_max_krs = float(t['max_records_per_sec']) / 1000
+throughput_calc_krs = float(t.get('calc_records_per_sec', 0)) / 1000
 cpu_pct = float(res['avg_cpu_cores']) * 100
 max_cpu_pct = float(res['max_cpu_cores']) * 100
 mem_gib = float(res['avg_memory_bytes']) / (1024**3)
@@ -338,13 +369,14 @@ else:
     s3_str = 'NA'
 
 print(f'Query:              {m[\"query\"]}')
-print(f'Throughput (avg):   {throughput_krs:.2f} kr/s')
+print(f'Throughput (avg):   {throughput_krs:.2f} kr/s (source operator rate)')
 print(f'Throughput (max):   {throughput_max_krs:.2f} kr/s')
+print(f'Throughput (calc):  {throughput_calc_krs:.2f} kr/s (wall-clock: events/time)')
 print(f'CPU (avg/max):      {cpu_pct:.1f}% / {max_cpu_pct:.1f}%')
 print(f'Memory (avg/max):   {mem_gib:.2f} GiB / {max_mem_gib:.2f} GiB')
 print(f'Duration:           {duration_min:.0f} min')
 print(f'Kafka events:       {events_million:.0f} M')
-print(f'Latency p50/p95/p99:{float(l[\"p50_ms\"]):.1f} / {float(l[\"p95_ms\"]):.1f} / {float(l[\"p99_ms\"]):.1f} ms')
+print(f'Ckpt latency p50/p95/p99: {float(l[\"p50_ms\"]):.1f} / {float(l[\"p95_ms\"]):.1f} / {float(l[\"p99_ms\"]):.1f} ms')
 print(f'Checkpoints:        {c[\"completed\"]} completed, {c[\"failed\"]} failed')
 print(f'S3 Size:            {s3_str}')
 print(f'Parallelism:        {m[\"parallelism\"]}')

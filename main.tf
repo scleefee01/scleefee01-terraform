@@ -24,7 +24,7 @@ resource "aws_iam_policy" "node_s3_access" {
           "s3:GetObject",
           "s3:DeleteObject"
         ]
-        Resource = "arn:aws:s3:::dev-sclee01-apne1/flink/*"
+        Resource = "arn:aws:s3:::dev-sclee01-apne1/*"
       }
     ]
   })
@@ -92,9 +92,9 @@ module "eks" {
       name           = "${var.cluster_name}-ng"
       instance_types = ["m6i.xlarge"]
 
-      desired_size = 3
+      desired_size = 4
       min_size     = 3
-      max_size     = 3
+      max_size     = 5
 
       disk_size = 100
 

@@ -5,4 +5,5 @@ terraform.tfstate.*
 .kube/
 *.pem
 .DS_Store
-results/
+results*/
+tfplan

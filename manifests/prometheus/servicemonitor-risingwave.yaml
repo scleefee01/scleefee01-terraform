@@ -1,0 +1,21 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: risingwave
+  namespace: monitoring
+  labels:
+    release: kps
+spec:
+  namespaceSelector:
+    matchNames:
+      - risingwave
+  selector:
+    matchExpressions:
+      - key: risingwave/name
+        operator: In
+        values:
+          - benchmark-risingwave
+  endpoints:
+    - port: metrics
+      interval: 15s
+      path: /metrics
