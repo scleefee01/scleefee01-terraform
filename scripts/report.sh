@@ -12,6 +12,7 @@ set -euo pipefail
 ###############################################################################
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 QUERY="${1:?Usage: $0 <query> [--skip-wait] [--timeout <minutes>]}"
 SKIP_WAIT=""
 TIMEOUT_MIN=60
@@ -26,7 +27,7 @@ done
 
 # Load env vars from TOML
 set -a
-source <("${SCRIPT_DIR}/tomlenv/bin/tomlenv" "${SCRIPT_DIR}/toml/env.toml")
+source <("${PROJECT_DIR}/tomlenv/bin/tomlenv" "${PROJECT_DIR}/toml/env.toml")
 export TRICK_SYMBOLS_EMPTY=""
 set +a
 
@@ -38,7 +39,7 @@ PROM_SVC="kps-kube-prometheus-stack-prometheus"
 PROM_PORT=9090
 LOCAL_PROM_PORT=19090
 LOCAL_FLINK_PORT=18081
-RESULTS_DIR="${SCRIPT_DIR}/results"
+RESULTS_DIR="${PROJECT_DIR}/results"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 REPORT_FILE="${RESULTS_DIR}/${QUERY}-${TIMESTAMP}.json"
 SUMMARY_FILE="${RESULTS_DIR}/summary.jsonl"

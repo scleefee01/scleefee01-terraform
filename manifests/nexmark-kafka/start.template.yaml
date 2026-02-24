@@ -47,9 +47,11 @@ spec:
         - |-
           IFS=',' read -ra QUERIES <<< "${BENCHMARK_NEXMARK_QUERIES}"
           for query in "$${TRICK_SYMBOLS_EMPTY}{QUERIES[@]}"; do
-            echo -e "/nexmark/kafka-sources/create.sql"
-            cat /nexmark/kafka-sources/create.sql
-            echo -e "/nexmark/queries/$${TRICK_SYMBOLS_EMPTY}{query}.sql"
-            cat /nexmark/queries/$${TRICK_SYMBOLS_EMPTY}{query}.sql
-            /opt/flink/bin/sql-client.sh embedded -l /opt/sql-client/lib -i /nexmark/kafka-sources/create.sql -f /nexmark/queries/$${TRICK_SYMBOLS_EMPTY}{query}.sql
+            # Merge init (SET commands) + create (DDL) + query into one file
+            COMBINED="/tmp/combined-$${TRICK_SYMBOLS_EMPTY}{query}.sql"
+            cat /nexmark/kafka-sources/init.sql /nexmark/kafka-sources/create.sql /nexmark/queries/$${TRICK_SYMBOLS_EMPTY}{query}.sql > "$${TRICK_SYMBOLS_EMPTY}{COMBINED}"
+            echo "=== Combined SQL for $${TRICK_SYMBOLS_EMPTY}{query} ==="
+            cat "$${TRICK_SYMBOLS_EMPTY}{COMBINED}"
+            echo "=== Executing ==="
+            /opt/flink/bin/sql-client.sh embedded -l /opt/sql-client/lib -f "$${TRICK_SYMBOLS_EMPTY}{COMBINED}"
           done

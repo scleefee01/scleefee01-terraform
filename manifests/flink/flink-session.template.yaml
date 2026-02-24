@@ -33,25 +33,25 @@ data:
     parallelism.max: 128
 
     # --- JVM / Restart strategy ---
-    env.java.opts: ${BENCHMARK_FLINK_ENV_JAVA_OPTS}
+    env.java.opts: -XX:+UseG1GC -XX:NewRatio=3 -XX:ParallelGCThreads=4
     restart-strategy: ${BENCHMARK_FLINK_RESTART_STRATEGY}
-    restart-strategy.fixed-delay.attempts: ${BENCHMARK_FLINK_RESTART_STRATEGY_FIXED_DELAY_ATTEMPTS}
-    restart-strategy.fixed-delay.delay: ${BENCHMARK_FLINK_RESTART_STRATEGY_FIXED_DELAY_DELAY}
-    jobmanager.execution.attempts-history-size: ${BENCHMARK_FLINK_JOBMANAGER_EXECUTION_ATTEMPTS_HISTORY_SIZE}
+    restart-strategy.fixed-delay.attempts: ${BENCHMARK_FLINK_RESTART_FIXED_DELAY_ATTEMPTS}
+    restart-strategy.fixed-delay.delay: ${BENCHMARK_FLINK_RESTART_FIXED_DELAY_DELAY}
+    jobmanager.execution.attempts-history-size: 16
 
     # --- Memory / Network tuning ---
     jobmanager.memory.process.size: ${BENCHMARK_FLINK_JOBMANAGER_MEMORY}
     taskmanager.memory.process.size: ${BENCHMARK_FLINK_TASKMANAGER_MEMORY}
     taskmanager.memory.managed.fraction: ${BENCHMARK_FLINK_TASKMANAGER_MEMORY_MANAGED_FRACTION}
-    taskmanager.network.request-backoff.max: ${BENCHMARK_FLINK_TASKMANAGER_NETWORK_REQUEST_BACKOFF_MAX}
-    taskmanager.network.memory.floating-buffers-per-gate: ${BENCHMARK_FLINK_TASKMANAGER_NETWORK_MEMORY_FLOATING_BUFFERS_PER_GATE}
-    taskmanager.network.memory.buffers-per-external-blocking-channel: ${BENCHMARK_FLINK_TASKMANAGER_NETWORK_MEMORY_BUFFERS_PER_EXTERNAL_BLOCKING_CHANNEL}
+    taskmanager.network.request-backoff.max: 30000
+    taskmanager.network.memory.floating-buffers-per-gate: ${BENCHMARK_FLINK_NETWORK_MEMORY_FLOATING_BUFFERS_PER_GATE}
+    taskmanager.network.memory.buffers-per-external-blocking-channel: ${BENCHMARK_FLINK_NETWORK_MEMORY_BUFFERS_PER_EXTERNAL_BLOCKING_CHANNEL}
 
     # --- Checkpointing / State backend ---
     execution.checkpointing.mode: EXACTLY_ONCE
     execution.checkpointing.interval: ${BENCHMARK_FLINK_CHECKPOINT_INTERVAL}
-    execution.checkpointing.max-concurrent-checkpoints: ${BENCHMARK_FLINK_EXECUTION_CHECKPOINTING_MAX_CONCURRENT_CHECKPOINTS}
-    execution.checkpointing.checkpoints-after-tasks-finish.enabled: ${BENCHMARK_FLINK_EXECUTION_CHECKPOINTING_CHECKPOINTS_AFTER_TASKS_FINISH_ENABLED}
+    execution.checkpointing.max-concurrent-checkpoints: ${BENCHMARK_FLINK_MAX_CONCURRENT_CHECKPOINTS}
+    execution.checkpointing.checkpoints-after-tasks-finish.enabled: true
 
     state.backend: rocksdb
     state.backend.incremental: ${BENCHMARK_FLINK_STATE_BACKEND_INCREMENTAL}
@@ -67,9 +67,47 @@ data:
     state.backend.rocksdb.compaction.level.target-file-size-base: ${BENCHMARK_FLINK_STATE_BACKEND_ROCKSDB_COMPACTION_LEVEL_TARGET_FILE_SIZE_BASE}
     state.backend.rocksdb.use-bloom-filter: ${BENCHMARK_FLINK_STATE_BACKEND_ROCKSDB_USE_BLOOM_FILTER}
 
+    # RocksDB metrics - cache & I/O
+    state.backend.rocksdb.metrics.block-cache-hit: true
+    state.backend.rocksdb.metrics.block-cache-miss: true
+    state.backend.rocksdb.metrics.bytes-read: true
+    state.backend.rocksdb.metrics.bytes-written: true
+    state.backend.rocksdb.metrics.compaction-pending: true
+    state.backend.rocksdb.metrics.actual-delayed-write-rate: true
+    # RocksDB metrics - memory breakdown
+    state.backend.rocksdb.metrics.block-cache-usage: true
+    state.backend.rocksdb.metrics.block-cache-capacity: true
+    state.backend.rocksdb.metrics.block-cache-pinned-usage: true
+    state.backend.rocksdb.metrics.cur-size-all-mem-tables: true
+    state.backend.rocksdb.metrics.size-all-mem-tables: true
+    state.backend.rocksdb.metrics.estimate-table-readers-mem: true
+    # RocksDB metrics - flush & compaction detail
+    state.backend.rocksdb.metrics.mem-table-flush-pending: true
+    state.backend.rocksdb.metrics.num-running-flushes: true
+    state.backend.rocksdb.metrics.num-running-compactions: true
+    state.backend.rocksdb.metrics.estimate-pending-compaction-bytes: true
+    state.backend.rocksdb.metrics.num-live-versions: true
+    state.backend.rocksdb.metrics.is-write-stopped: true
+    state.backend.rocksdb.metrics.num-immutable-mem-table: true
+
     # --- S3 endpoint (credentials are from IRSA) ---
     fs.s3a.endpoint: s3.ap-northeast-1.amazonaws.com
 
+    # --- Akka / RPC tuning ---
+    akka.ask.timeout: 120s
+    akka.watch.heartbeat.interval: 10s
+    akka.framesize: 102400kB
+
+    # --- Shuffle tuning ---
+    task.external.shuffle.max-concurrent-requests: 512
+    task.external.shuffle.compression.enable: true
+
+    # --- Mini-batch optimization (reduces state I/O for stateful queries) ---
+    table.exec.mini-batch.enabled: true
+    table.exec.mini-batch.allow-latency: 2s
+    table.exec.mini-batch.size: 50000
+    table.optimizer.distinct-agg.split.enabled: true
+    pipeline.object-reuse: false
 
     # --- Local tmp dirs ---
     io.tmp.dirs: /opt/flink/tmp
@@ -150,11 +188,11 @@ spec:
             runAsUser: 9999
           resources:
             requests:
-              cpu: ${BENCHMARK_FLINK_RESOURCES_CPU_REQUEST}
-              memory: ${BENCHMARK_FLINK_RESOURCES_MEM_REQUEST}
+              cpu: "1"
+              memory: "2Gi"
             limits:
-              cpu: ${BENCHMARK_FLINK_RESOURCES_CPU_LIMIT}
-              memory: ${BENCHMARK_FLINK_RESOURCES_MEM_LIMIT}
+              cpu: "2"
+              memory: "3Gi"
       volumes:
         - name: flink-config-volume
           configMap:
@@ -165,7 +203,7 @@ spec:
               - key: log4j-console.properties
                 path: log4j-console.properties
         - name: tmp-dir
-          emptyDir: {}  
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -207,6 +245,19 @@ spec:
         component: taskmanager
     spec:
       serviceAccountName: flink
+      nodeSelector:
+        node-role: flink-tm
+      tolerations:
+        - key: dedicated
+          value: flink-tm
+          effect: NoSchedule
+      initContainers:
+        - name: fix-permissions
+          image: busybox
+          command: ["sh", "-c", "chown -R 9999:9999 /opt/flink/tmp"]
+          volumeMounts:
+            - name: tmp-dir
+              mountPath: /opt/flink/tmp
       containers:
         - name: taskmanager
           image: ghcr.io/risingwavelabs/flink-docker:${BENCHMARK_FLINK_IMAGE_TAG}
@@ -242,5 +293,12 @@ spec:
                 path: flink-conf.yaml
               - key: log4j-console.properties
                 path: log4j-console.properties
-        - name: tmp-dir
-          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: tmp-dir
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: gp2
+        resources:
+          requests:
+            storage: 100Gi

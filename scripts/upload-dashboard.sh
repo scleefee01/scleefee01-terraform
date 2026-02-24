@@ -2,7 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DASHBOARD_FILE="${SCRIPT_DIR}/manifests/grafana/flink-benchmark-dashboard.json"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+DASHBOARD_FILE="${PROJECT_DIR}/manifests/grafana/flink-benchmark-dashboard.json"
 LOCAL_PORT="${1:-3000}"
 GRAFANA_NS="monitoring"
 GRAFANA_SVC="kps-grafana"

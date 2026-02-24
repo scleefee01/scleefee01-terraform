@@ -14,12 +14,13 @@ set -euo pipefail
 ###############################################################################
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "${SCRIPT_DIR}"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "${PROJECT_DIR}"
 
-QUERIES=(q1 q2 q3 q4 q5 q7 q8 q9 q10 q14 q15 q16 q17 q18 q20 q21 q22)
+QUERIES=(q0 q1 q2 q3 q4 q5 q7 q8 q9 q10 q14 q15 q16 q17 q18 q20 q21 q22)
 TIMEOUT_MIN=60
 
-RESULTS_DIR="${SCRIPT_DIR}/results"
+RESULTS_DIR="${PROJECT_DIR}/results"
 mkdir -p "${RESULTS_DIR}"
 LOG_FILE="${RESULTS_DIR}/bench-all-$(date +%Y%m%d-%H%M%S).log"
 
@@ -43,7 +44,7 @@ echo "=== Pre-flight checks ==="
 
 # Load env vars
 set -a
-source <("${SCRIPT_DIR}/tomlenv/bin/tomlenv" "${SCRIPT_DIR}/toml/env.toml")
+source <("${PROJECT_DIR}/tomlenv/bin/tomlenv" "${PROJECT_DIR}/toml/env.toml")
 export TRICK_SYMBOLS_EMPTY=""
 set +a
 
@@ -102,7 +103,7 @@ for query in "${QUERIES[@]}"; do
     set -e
 
     # 1. Cancel any running Flink jobs
-    ./clean.sh --keep-topic || true
+    "${SCRIPT_DIR}/clean.sh" --keep-topic || true
 
     # 2. Reset consumer group offset to earliest
     kubectl exec -n "${KAFKA_NS}" "${KAFKA_NAME}-controller-0" -- \
@@ -111,13 +112,13 @@ for query in "${QUERIES[@]}"; do
       --topic nexmark-events --reset-offsets --to-earliest --execute 2>/dev/null || true
 
     # 3. Submit query
-    ./start.sh "${query}"
+    "${SCRIPT_DIR}/start.sh" "${query}"
 
     # 4. Wait for job to initialize
     sleep 30
 
     # 5. Wait for lag=0 and collect metrics
-    ./report.sh "${query}" --timeout "${TIMEOUT_MIN}"
+    "${SCRIPT_DIR}/report.sh" "${query}" --timeout "${TIMEOUT_MIN}"
   ); then
     PASSED+=("${query}")
     echo "  >> ${query}: PASSED"

@@ -2,10 +2,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Load env vars from TOML
 set -a
-source <("${SCRIPT_DIR}/tomlenv/bin/tomlenv" "${SCRIPT_DIR}/toml/env.toml")
+source <("${PROJECT_DIR}/tomlenv/bin/tomlenv" "${PROJECT_DIR}/toml/env.toml")
 export TRICK_SYMBOLS_EMPTY=""
 set +a
 
@@ -15,7 +16,7 @@ echo "=== Preparing Nexmark data (Job: ${BENCHMARK_JOB_NAME}-prepare, ns: ${BENC
 kubectl delete job "${BENCHMARK_JOB_NAME}-prepare" -n "${BENCHMARK_NAMESPACE}" --ignore-not-found
 
 # Apply prepare job
-envsubst < "${SCRIPT_DIR}/manifests/nexmark-kafka/prepare.template.yaml" | kubectl apply -f -
+envsubst < "${PROJECT_DIR}/manifests/nexmark-kafka/prepare.template.yaml" | kubectl apply -f -
 
 # Wait for pod to be scheduled and running
 JOB_NAME="${BENCHMARK_JOB_NAME}-prepare"

@@ -11,11 +11,12 @@ set -euo pipefail
 ###############################################################################
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 QUERY="${1:?Usage: $0 <query> (e.g. q0, q1, q2, ...)}"
 
 # Load env vars from TOML
 set -a
-source <("${SCRIPT_DIR}/tomlenv/bin/tomlenv" "${SCRIPT_DIR}/toml/env.toml")
+source <("${PROJECT_DIR}/tomlenv/bin/tomlenv" "${PROJECT_DIR}/toml/env.toml")
 export TRICK_SYMBOLS_EMPTY=""
 set +a
 
@@ -64,8 +65,8 @@ fi
 # 1. Apply ConfigMaps (idempotent)
 ###############################################################################
 echo "=== Applying ConfigMaps ==="
-envsubst < "${SCRIPT_DIR}/manifests/risingwave-nexmark/nexmark-kafka-sources.template.yaml" | kubectl apply -f -
-envsubst < "${SCRIPT_DIR}/manifests/risingwave-nexmark/nexmark-sinks.template.yaml" | kubectl apply -f -
+envsubst < "${PROJECT_DIR}/manifests/risingwave-nexmark/nexmark-kafka-sources.template.yaml" | kubectl apply -f -
+envsubst < "${PROJECT_DIR}/manifests/risingwave-nexmark/nexmark-sinks.template.yaml" | kubectl apply -f -
 
 ###############################################################################
 # 2. Port-forward to RisingWave frontend

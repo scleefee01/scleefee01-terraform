@@ -4,7 +4,7 @@ metadata:
   name: nexmark-kafka-sources-${BENCHMARK_JOB_NAME}
   namespace: ${BENCHMARK_FLINK_NAMESPACE}
 data:
-  create.sql: | 
+  create.sql: |
     CREATE TABLE kafka (
       event_type int,
       person ROW<
@@ -88,12 +88,20 @@ data:
       dateTime,
       bid.extra
     FROM kafka WHERE event_type = 2;
+  init.sql: |
+    SET 'execution.checkpointing.mode' = 'EXACTLY_ONCE';
+    SET 'execution.checkpointing.interval' = '${BENCHMARK_FLINK_CHECKPOINT_INTERVAL}';
+    SET 'execution.checkpointing.max-concurrent-checkpoints' = '${BENCHMARK_FLINK_MAX_CONCURRENT_CHECKPOINTS}';
+    SET 'table.exec.mini-batch.enabled' = 'true';
+    SET 'table.exec.mini-batch.allow-latency' = '2s';
+    SET 'table.exec.mini-batch.size' = '50000';
+    SET 'table.optimizer.distinct-agg.split.enabled' = 'true';
   drop.sql:
     drop VIEW person;
     drop VIEW auction;
     drop VIEW bid;
     drop TABLE kafka;
-  create_without_watermark.sql: | 
+  create_without_watermark.sql: |
     CREATE TABLE kafka (
       event_type int,
       person ROW<

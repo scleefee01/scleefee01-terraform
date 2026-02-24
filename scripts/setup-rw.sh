@@ -2,10 +2,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Load env vars from TOML
 set -a
-source <("${SCRIPT_DIR}/tomlenv/bin/tomlenv" "${SCRIPT_DIR}/toml/env.toml")
+source <("${PROJECT_DIR}/tomlenv/bin/tomlenv" "${PROJECT_DIR}/toml/env.toml")
 export TRICK_SYMBOLS_EMPTY=""
 set +a
 
@@ -59,11 +60,11 @@ kubectl create ns "${NS}" --dry-run=client -o yaml | kubectl apply -f -
 
 # --- 2. Create ServiceAccount (IRSA) ---
 echo "=== Creating ServiceAccount with IRSA ==="
-envsubst < "${SCRIPT_DIR}/manifests/risingwave/serviceaccount.template.yaml" | kubectl apply -f -
+envsubst < "${PROJECT_DIR}/manifests/risingwave/serviceaccount.template.yaml" | kubectl apply -f -
 
 # --- 3. Deploy etcd via Helm ---
 echo "=== Deploying etcd: ${ETCD_NAME} ==="
-envsubst < "${SCRIPT_DIR}/manifests/etcd/values.template.yaml" > /tmp/etcd-values.yaml
+envsubst < "${PROJECT_DIR}/manifests/etcd/values.template.yaml" > /tmp/etcd-values.yaml
 helm upgrade --install --wait "${ETCD_NAME}" bitnami/etcd \
   -n "${NS}" \
   -f /tmp/etcd-values.yaml
@@ -73,7 +74,7 @@ kubectl -n "${NS}" rollout status statefulset/"${ETCD_NAME}" --timeout=120s
 
 # --- 4. Create RisingWave ConfigMap ---
 echo "=== Creating RisingWave ConfigMap ==="
-envsubst < "${SCRIPT_DIR}/manifests/risingwave/config/risingwave.toml" > /tmp/risingwave-rendered.toml
+envsubst < "${PROJECT_DIR}/manifests/risingwave/config/risingwave.toml" > /tmp/risingwave-rendered.toml
 kubectl create configmap "${RW_NAME}-config-template" \
   --from-file=risingwave.toml=/tmp/risingwave-rendered.toml \
   -n "${NS}" \
@@ -81,7 +82,7 @@ kubectl create configmap "${RW_NAME}-config-template" \
 
 # --- 5. Apply RisingWave CR ---
 echo "=== Applying RisingWave CR ==="
-envsubst < "${SCRIPT_DIR}/manifests/risingwave/risingwave.template.yaml" | kubectl apply -f -
+envsubst < "${PROJECT_DIR}/manifests/risingwave/risingwave.template.yaml" | kubectl apply -f -
 
 # --- 6. Wait for RisingWave rollout ---
 echo "=== Waiting for RisingWave to be ready... ==="

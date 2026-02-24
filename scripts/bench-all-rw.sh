@@ -15,11 +15,12 @@ set -euo pipefail
 ###############################################################################
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "${SCRIPT_DIR}"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "${PROJECT_DIR}"
 
 QUERIES=(q1 q2 q3 q4 q5 q7 q8 q9 q10 q14 q15 q16 q17 q18 q20 q21 q22)
 
-RESULTS_DIR="${SCRIPT_DIR}/results-rw"
+RESULTS_DIR="${PROJECT_DIR}/results-rw"
 mkdir -p "${RESULTS_DIR}"
 LOG_FILE="${RESULTS_DIR}/bench-all-rw-$(date +%Y%m%d-%H%M%S).log"
 
@@ -49,7 +50,7 @@ echo "  psql: OK"
 
 # Load env vars
 set -a
-source <("${SCRIPT_DIR}/tomlenv/bin/tomlenv" "${SCRIPT_DIR}/toml/env.toml")
+source <("${PROJECT_DIR}/tomlenv/bin/tomlenv" "${PROJECT_DIR}/toml/env.toml")
 export TRICK_SYMBOLS_EMPTY=""
 set +a
 
@@ -75,7 +76,7 @@ TOTAL_MESSAGES=$(kubectl exec -n "${KAFKA_NS}" "${KAFKA_NAME}-controller-0" -- \
 
 if [[ "${TOTAL_MESSAGES}" -eq 0 ]]; then
   echo "WARNING: No data in nexmark-events topic. Running prepare.sh..."
-  ./prepare.sh
+  "${SCRIPT_DIR}/prepare.sh"
   TOTAL_MESSAGES=$(kubectl exec -n "${KAFKA_NS}" "${KAFKA_NAME}-controller-0" -- \
     /opt/bitnami/kafka/bin/kafka-get-offsets.sh \
     --bootstrap-server localhost:9092 --topic nexmark-events 2>/dev/null \
@@ -108,13 +109,13 @@ for query in "${QUERIES[@]}"; do
     set -e
 
     # 1. Create sources + submit sink
-    ./start-rw.sh "${query}"
+    "${SCRIPT_DIR}/start-rw.sh" "${query}"
 
     # 2. Wait for job to initialize
     sleep 30
 
     # 3. Wait for lag=0 and collect metrics (30 min timeout)
-    ./report-rw.sh "${query}" --timeout 60
+    "${SCRIPT_DIR}/report-rw.sh" "${query}" --timeout 60
   ); then
     PASSED+=("${query}")
     echo "  >> ${query}: PASSED"
@@ -124,7 +125,7 @@ for query in "${QUERIES[@]}"; do
   fi
 
   # 4. Drop sink + sources for clean slate
-  ./clean-rw.sh --keep-topic || true
+  "${SCRIPT_DIR}/clean-rw.sh" --keep-topic || true
 
   # 5. Brief pause between queries
   sleep 10

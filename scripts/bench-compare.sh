@@ -16,7 +16,8 @@ set -euo pipefail
 ###############################################################################
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "${SCRIPT_DIR}"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "${PROJECT_DIR}"
 
 # Parse flags
 RUN_FLINK=true
@@ -29,8 +30,8 @@ for arg in "$@"; do
 done
 
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-LOG_FILE="${SCRIPT_DIR}/results/bench-compare-${TIMESTAMP}.log"
-mkdir -p "${SCRIPT_DIR}/results" "${SCRIPT_DIR}/results-rw"
+LOG_FILE="${PROJECT_DIR}/results/bench-compare-${TIMESTAMP}.log"
+mkdir -p "${PROJECT_DIR}/results" "${PROJECT_DIR}/results-rw"
 
 exec > >(tee -a "${LOG_FILE}") 2>&1
 
@@ -45,7 +46,7 @@ echo ""
 
 # Load env vars
 set -a
-source <("${SCRIPT_DIR}/tomlenv/bin/tomlenv" "${SCRIPT_DIR}/toml/env.toml")
+source <("${PROJECT_DIR}/tomlenv/bin/tomlenv" "${PROJECT_DIR}/toml/env.toml")
 export TRICK_SYMBOLS_EMPTY=""
 set +a
 
@@ -84,7 +85,7 @@ TOTAL_MESSAGES=$(kubectl exec -n "${KAFKA_NS}" "${KAFKA_NAME}-controller-0" -- \
 
 if [[ "${TOTAL_MESSAGES}" -lt "${BENCHMARK_NEXMARK_KAFKA_MAX_EVENTS}" ]]; then
   echo "  Need to prepare data: have ${TOTAL_MESSAGES}, need ${BENCHMARK_NEXMARK_KAFKA_MAX_EVENTS}"
-  ./prepare.sh
+  "${SCRIPT_DIR}/prepare.sh"
 else
   echo "  Kafka data ready: ${TOTAL_MESSAGES} messages"
 fi
@@ -106,7 +107,7 @@ if [[ "${RUN_FLINK}" == "true" ]]; then
   FLINK_START_TIME=$(date +%s)
 
   # Run Flink bench-all (q0 already in summary.jsonl)
-  ./bench-all.sh || echo "WARNING: Flink benchmark had failures"
+  "${SCRIPT_DIR}/bench-all.sh" || echo "WARNING: Flink benchmark had failures"
 
   FLINK_END_TIME=$(date +%s)
   FLINK_DURATION=$(( (FLINK_END_TIME - FLINK_START_TIME) / 60 ))
@@ -117,7 +118,7 @@ if [[ "${RUN_FLINK}" == "true" ]]; then
 
   # Clean up Flink jobs but keep Kafka data for RisingWave
   echo "=== Cleaning up Flink (keeping Kafka data) ==="
-  ./clean.sh --keep-topic || true
+  "${SCRIPT_DIR}/clean.sh" --keep-topic || true
   sleep 10
 fi
 
@@ -137,7 +138,7 @@ if [[ "${RUN_RW}" == "true" ]]; then
   RW_START_TIME=$(date +%s)
 
   # Run RisingWave bench-all (q0 already in summary.jsonl)
-  ./bench-all-rw.sh || echo "WARNING: RisingWave benchmark had failures"
+  "${SCRIPT_DIR}/bench-all-rw.sh" || echo "WARNING: RisingWave benchmark had failures"
 
   RW_END_TIME=$(date +%s)
   RW_DURATION=$(( (RW_END_TIME - RW_START_TIME) / 60 ))
@@ -147,7 +148,7 @@ if [[ "${RUN_RW}" == "true" ]]; then
   echo ""
 
   # Clean up RisingWave
-  ./clean-rw.sh --keep-topic || true
+  "${SCRIPT_DIR}/clean-rw.sh" --keep-topic || true
 fi
 
 ###############################################################################
@@ -163,8 +164,8 @@ echo ""
 python3 -c "
 import json, sys, os
 
-flink_file = '${SCRIPT_DIR}/results/summary.jsonl'
-rw_file = '${SCRIPT_DIR}/results-rw/summary.jsonl'
+flink_file = '${PROJECT_DIR}/results/summary.jsonl'
+rw_file = '${PROJECT_DIR}/results-rw/summary.jsonl'
 
 flink = {}
 rw = {}
@@ -270,6 +271,6 @@ print('  This includes backpressure, buffering, and all processing overhead.')
 "
 
 echo ""
-echo "  Flink results:      ${SCRIPT_DIR}/results/summary.jsonl"
-echo "  RisingWave results: ${SCRIPT_DIR}/results-rw/summary.jsonl"
+echo "  Flink results:      ${PROJECT_DIR}/results/summary.jsonl"
+echo "  RisingWave results: ${PROJECT_DIR}/results-rw/summary.jsonl"
 echo "  Full log:           ${LOG_FILE}"

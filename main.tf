@@ -90,7 +90,7 @@ module "eks" {
   eks_managed_node_groups = {
     main = {
       name           = "${var.cluster_name}-ng"
-      instance_types = ["m6i.xlarge"]
+      instance_types = ["c5.2xlarge"]
 
       desired_size = 4
       min_size     = 3
@@ -101,6 +101,34 @@ module "eks" {
       iam_role_additional_policies = {
         s3_access     = aws_iam_policy.node_s3_access.arn
         ebs_csi       = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+      }
+    }
+
+    flink_tm = {
+      name           = "flink-tm"
+      instance_types = ["c5.2xlarge"]
+
+      desired_size = 1
+      min_size     = 0
+      max_size     = 2
+
+      disk_size = 100
+
+      iam_role_additional_policies = {
+        s3_access     = aws_iam_policy.node_s3_access.arn
+        ebs_csi       = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+      }
+
+      taints = {
+        flink_tm = {
+          key    = "dedicated"
+          value  = "flink-tm"
+          effect = "NO_SCHEDULE"
+        }
+      }
+
+      labels = {
+        "node-role" = "flink-tm"
       }
     }
   }
